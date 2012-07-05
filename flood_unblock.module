@@ -1,6 +1,13 @@
 <?php
 
 /**
+ * @file
+ * The module file
+ *
+ * This module makes it possible to remove certain ip's blocked in flood
+ */
+
+/**
  * Implements hook_menu().
  */
 function flood_unblock_menu() {
