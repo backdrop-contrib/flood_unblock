@@ -16,9 +16,20 @@ function flood_unblock_menu() {
     'description' => 'List all user blocked by the flood table.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('flood_unblock_settings'),
-    'access arguments' => array('administer site configuration'),
+    'access arguments' => array('access flood unblock'),
   );
   return $items;
+}
+
+/**
++ * Implements hook_permission().
++ */
+function flood_unblock_permission() {
+  return array(
+    'access flood unblock' => array(
+      'title' => t('Access the flood unblock module'),
+      ),
+    );
 }
 
 function flood_unblock_settings() {
