@@ -4,7 +4,7 @@
  * @file
  * The module file
  *
- * This module makes it possible to remove certain ip's blocked in flood
+ * This module makes it possible to remove certain ip_address's blocked in flood
  */
 
 /**
@@ -12,12 +12,13 @@
  */
 function flood_unblock_menu() {
   $items['admin/config/system/flood-unblock'] = array(
-    'title' => 'Flood unblock',
-    'description' => 'Clear flood entries.',
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('flood_unblock_settings'),
+    'title'            => 'Flood unblock',
+    'description'      => 'List all user blocked by the flood table.',
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('flood_unblock_settings'),
     'access arguments' => array('access flood unblock'),
   );
+
   return $items;
 }
 
@@ -28,69 +29,78 @@ function flood_unblock_permission() {
   return array(
     'access flood unblock' => array(
       'title' => t('Access the flood unblock module'),
-      ),
-    );
+    ),
+  );
 }
 
 /**
  * The settings form function
  */
 function flood_unblock_settings() {
-  $form = array();
-  $events = _flood_unblock_get_event_options();
-  if (empty($events)) {
-    drupal_set_message(t('No flood events to clear.'));
-    return $form;
-  }
-  $form['flood_unblock'] = array(
-    '#type' => 'select',
-    '#title' => t('Clear which event'),
+  $form                     = array();
+  $form['flood_unblock']    = array(
+    '#type'     => 'select',
+    '#title'    => t('Clear which type of flood'),
     '#required' => TRUE,
-    '#options' => $events,
+    '#options'  => array(
+      'ip_address'   => t('Clear ip_address blocks'),
+      'user' => t('Clear user blocks'),
+    ),
   );
-  $form['flood_unblock_id'] = array(
-    '#type' => 'textfield',
-    '#title' => t('What identifer should be cleared'),
-    '#required' => FALSE,
-    '#description' => t('If this field is empty all chosen events will be cleared.'),
+  $form['flood_unblock_ip'] = array(
+    '#type'        => 'textfield',
+    '#title'       => t('What ip_address address should be cleared'),
+    '#required'    => FALSE,
+    '#description' => t('If this field is empty all ip_address addresses will be cleared'),
   );
-  $form['submit'] = array(
-    '#type' => 'submit',
+  $form['submit']           = array(
+    '#type'  => 'submit',
     '#value' => t('Clear flood'),
   );
+
   return $form;
 }
 
 /**
- * The submit function
+ * The validation function.
+ */
+function flood_unblock_settings_validate($form, &$form_state) {
+  $ip_address = $form_state['values']['flood_unblock_ip'];
+  if (!empty($ip_address)) {
+    if (!filter_var($ip_address, FILTER_VALIDATE_IP)) {
+      form_set_error('flood_unblock_ip', t('The ip_address address is not valid'));
+    }
+  }
+}
+
+/**
+ * The submit function.
  */
 function flood_unblock_settings_submit($form, &$form_state) {
-  flood_unblock_clear_event($form_state['values']['flood_unblock'], $form_state['values']['flood_unblock_id']);
+  switch ($form_state['values']['flood_unblock']) {
+    case 'ip_address':
+      $type = 'failed_login_attempt_ip';
+      break;
+
+    case 'user':
+      $type = 'failed_login_attempt_user';
+      break;
+  }
+  $ip_address = NULL;
+  if (!empty($form_state['values']['flood_unblock_ip'])) {
+    $ip_address = $form_state['values']['flood_unblock_ip'];
+  }
+  flood_unblock_clear_event($type, $ip_address);
 }
 
 /**
- * The function that clear the flood
+ * The function that clear the flood.
  */
-function flood_unblock_clear_event($type, $ip) {
-  $query = db_delete('flood')
-    ->condition('event', $type);
-  if (isset($ip)) {
-    $query->condition('identifier', '%' . $ip, 'LIKE');
+function flood_unblock_clear_event($type, $ip_address) {
+  $query = db_delete('flood')->condition('event', $type);
+  if (isset($ip_address)) {
+    $query->condition('identifier', '%' . $ip_address, 'LIKE');
   }
-  $count = $query->execute();
-  drupal_set_message(t('Flood cleared !num entries', array('!num' => $count)));
-}
-
-/**
- * Get flood events in FAPI options format.
- *
- * @return array
- */
-function _flood_unblock_get_event_options() {
-  $events = array();
-  $result = db_query("SELECT DISTINCT event FROM {flood}");
-  foreach ($result as $record) {
-    $events[$record->event] = $record->event;
-  }
-  return $events;
+  $query->execute();
+  drupal_set_message(t('Flood cleared'));
 }
