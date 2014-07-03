@@ -29,6 +29,8 @@ function flood_unblock_drush_help($section) {
     case 'drush:flood-unblock':
       return dt('Empty the flood table for the selected event.');
   }
+
+  return FALSE;
 }
 
 /**
@@ -48,6 +50,8 @@ function flood_unblock_clear_drush($type = NULL) {
     }
   }
   drush_op($types[$type], $type);
+
+  return FALSE;
 }
 
 /**
