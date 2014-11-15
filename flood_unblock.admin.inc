@@ -168,10 +168,13 @@ function  _flood_unblock_get_entries() {
   }
 
   // TODO: Rebuild this query to a dynamic query.
-  $sql = "SELECT identifier,count(*) count,SUBSTRING_INDEX(identifier, '-',1) AS uid, SUBSTRING_INDEX(identifier, '-',-1) AS ip FROM {flood} WHERE event='failed_login_attempt_user' group by identifier";
+  $sql = "SELECT identifier, count(*) count FROM {flood} WHERE event='failed_login_attempt_user' group by identifier";
 
   $results = db_query($sql);
   foreach ($results as $result) {
+    $parts = explode('-', $result->identifier);
+    $result->uid = $parts[0];
+    $result->ip = $parts[1];
     if (function_exists('smart_ip_get_location')) {
       $location = smart_ip_get_location($result->ip);
       $location_string = sprintf(" (%s %s %s)", $location['city'], $location['region'], $location['country_code']);
