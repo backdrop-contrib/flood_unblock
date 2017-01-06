@@ -1,0 +1,6 @@
+name = Flood unblock Services
+description = "Services Interface for unblocking ip's that are blocked by the flood table"
+core = 7.x
+
+dependencies[] = flood_unblock
+dependencies[] = services
