@@ -13,8 +13,9 @@
  */
 function flood_unblock_settings() {
   $entries = _flood_unblock_get_entries();
-  $ip_limit = variable_get('user_failed_login_ip_limit', 50);
-  $user_limit = variable_get('user_failed_login_user_limit', 5);
+  $config = config('user.flood');
+  $ip_limit = $config->get('flood_ip_limit');
+  $user_limit = $config->get('flood_user_limit');
 
   $blocks = array();
   foreach ($entries as $identifier => $entry) {
@@ -54,24 +55,12 @@ function flood_unblock_settings() {
     );
   }
 
-  $prefix = 'Drupal has two types of blocks available:<br />' .
+  $prefix = 'There are two ways users are blocked:<br />' .
     '<ul><li>One where the incorrect password of an existing user account is being used. The user account being used and the IP address is logged.' .
     '<li>One where an incorrect user name is being used. The IP address is logged.</ul>' .
-    '<br/>' .
-    'Both types of blocks has different settings. ';
-  if (module_exists('flood_control')) {
-    $prefix .= l('Click here to look at these settings.', 'admin/config/system/flood-control') . '<br />';
-  }
-  else {
-    $prefix .= 'These settings can be looked at by installing and enabling the ' . l('Flood Control module.', 'http://drupal.org/project/flood_control') . '<br />';
-  }
-
-  $prefix .= '<br />';
-
-  if (!function_exists('smart_ip_get_location')) {
-    $prefix .= 'If the ' . l('Smart IP', 'http://drupal.org/project/smart_ip') . ' module is loaded, the physical location of the IP address will be shown.<br />';
-    $prefix .= '<br />';
-  }
+    '<p>Both types of blocks has different ';
+    $prefix .= l('settings', 'admin/config/system/flood-control') . '</p>';
+  
 
   $form['table'] = array(
     '#type'    => 'tableselect',

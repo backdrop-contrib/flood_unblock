@@ -11,7 +11,7 @@
  * Implements hook_menu().
  */
 function flood_unblock_menu() {
-  $items['admin/config/system/flood-unblock'] = array(
+  $items['admin/config/people/flood-control/flood-unblock'] = array(
     'title'            => 'Flood unblock',
     'description'      => 'List all user blocked by the flood table.',
     'page callback'    => 'drupal_get_form',
@@ -46,7 +46,7 @@ function flood_unblock_clear_event($type, $identifier) {
     }
     $success = $query->execute();
     if ($success) {
-      drupal_set_message(t('Flood entries cleared.'), 'status', FALSE);
+      backdrop_set_message(t('Flood entries cleared.'), 'status', FALSE);
     }
   }
   catch (Exception $e) {
@@ -54,6 +54,6 @@ function flood_unblock_clear_event($type, $identifier) {
     $txn->rollback();
     // Log the exception to watchdog.
     watchdog_exception('type', $e);
-    drupal_set_message("Error: " . $e, 'error');
+    backdrop_set_message("Error: " . $e, 'error');
   }
 }
