@@ -55,11 +55,11 @@ function flood_unblock_settings() {
     );
   }
 
-  $prefix = 'There are two ways users are blocked:<br />' .
-    '<ul><li>One where the incorrect password of an existing user account is being used. The user account being used and the IP address is logged.' .
-    '<li>One where an incorrect user name is being used. The IP address is logged.</ul>' .
+  $prefix = '<p>There are two ways users are blocked:</p>' .
+    '<ul><li>Someone trying to log into the same account repeatedly.</li>' .
+    '<li>Multiple login attempts from the same IP address to one or more usernames.</li></ul>' .
     '<p>Both types of blocks has different ';
-    $prefix .= l('settings', 'admin/config/system/flood-control') . '</p>';
+    $prefix .= l('settings', 'admin/config/people/flood-control') . '</p>';
   
 
   $form['table'] = array(
