@@ -59,7 +59,7 @@ function flood_unblock_settings() {
     '<ul><li>Someone trying to log into the same account repeatedly.</li>' .
     '<li>Multiple login attempts from the same IP address to one or more usernames.</li></ul>' .
     '<p>Both types of blocks has different ';
-    $prefix .= l('settings', 'admin/config/people/flood-control') . '</p>';
+    $prefix .= l('settings', 'admin/config/people/login') . '</p>';
   
 
   $form['table'] = array(

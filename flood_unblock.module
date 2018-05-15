@@ -11,7 +11,7 @@
  * Implements hook_menu().
  */
 function flood_unblock_menu() {
-  $items['admin/config/people/flood-control/flood-unblock'] = array(
+  $items['admin/config/people/flood-unblock'] = array(
     'title'            => 'Flood unblock',
     'description'      => 'List all user blocked by the flood table.',
     'page callback'    => 'drupal_get_form',
