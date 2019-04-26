@@ -18,15 +18,17 @@ This project is GPL v2 software. See the LICENSE.txt file in this directory for 
 Maintainers
 -----------
 
-- herbdool <https://github.com/herbdool>
+Seeking Maintainers.
 
+
+Credits
+-------
 Ported to Backdrop by:
 
 - herbdool <https://github.com/herbdool>
 
-Credits
--------
 
 This module is based on the Flood Unblock module for Drupal--starting at version 7.x-1.5--originally written and maintained by:
 
 - fabianderijk <https://www.drupal.org/u/fabianderijk>
+
