@@ -2,4 +2,4 @@ name = Flood unblock
 description = "Interface for unblocking IP's that are blocked by the flood table"
 backdrop = 1.x
 type = module
-configure = admin/config/people/flood-control/flood-unblock
+configure = admin/config/people/flood-unblock
