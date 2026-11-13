@@ -33,7 +33,8 @@ This project is GPL v2 software. See the LICENSE.txt file in this directory for 
 Maintainers
 -----------
 
-Seeking Maintainers.
+- [Steve Moorhouse (albanycomputers)](https://github.com/albanycomputers)
+- Additional maintainers welcomed.
 
 
 Credits
