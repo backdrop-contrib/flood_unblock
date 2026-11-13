@@ -5,183 +5,86 @@
  */
 
 /**
- * The settings form function.
+ * Form constructor: lists flood entries so they can be cleared.
  *
- * TODO: Clean up this code. It's a bit messy. See list below.
- * - String have to be translatable, and it has to be better then it is now!
- * - Split this function up. It is to complex right now.
+ * @see flood_unblock_settings_validate()
+ * @see flood_unblock_settings_submit()
  */
-function flood_unblock_settings() {
-  $entries = _flood_unblock_get_entries();
-  $config = config('user.flood');
-  $ip_limit = $config->get('flood_ip_limit');
-  $user_limit = $config->get('flood_user_limit');
+function flood_unblock_settings($form, &$form_state) {
+  $entries = flood_unblock_get_entries();
 
-  $blocks = array();
-  foreach ($entries as $identifier => $entry) {
-    $blocks[$identifier] = array(
-      'identifier' => $identifier,
-      'type'       => $entry['type'],
-      'count'      => $entry['count'],
-    );
-    if ($entry['type'] == 'ip') {
-      $blocks[$identifier]['ip'] = $entry['ip'] . $entry['location'];
-      $blocks[$identifier]['uid'] = '';
-      $blocks[$identifier]['blocked'] = $entry['count'] >= $ip_limit ? "Yes" : "";
-    }
-    if ($entry['type'] == 'user') {
-      $blocks[$identifier]['ip'] = $entry['ip'] . $entry['location'];
-      $blocks[$identifier]['uid'] = $entry['username'];
-      $blocks[$identifier]['blocked'] = $entry['count'] >= $user_limit ? "Yes" : "";
-    }
-  }
-
-  $header = array(
-    'blocked' => t('Blocked'),
-    'type'    => t('Type of block'),
-    'count'   => t('Count'),
-    'uid'     => t('Account name'),
-    'ip'      => t('IP Address'),
+  $form['help'] = array(
+    '#markup' => '<p>' . t('People are blocked after too many failed logins or password reset requests, either for one account or from one IP address. Blocks lift on their own once the attempts age out; clear them here to lift a block now. The limits are set on the <a href="@url">account settings</a> page.', array('@url' => url('admin/config/people/login'))) . '</p>',
   );
 
   $options = array();
-  foreach ($blocks as $block) {
-    $options[$block['identifier']] = array(
-      'blocked' => $block['blocked'],
-      'type'    => $block['type'],
-      'count'   => $block['count'],
-      'uid'     => $block['uid'],
-      'ip'      => $block['ip'],
+  $map = array();
+  foreach ($entries as $key => $entry) {
+    $options[$key] = array(
+      'blocked' => $entry['blocked'] ? t('Blocked') : '',
+      'type' => check_plain($entry['label']),
+      'count' => t('@count of @limit', array('@count' => $entry['count'], '@limit' => $entry['limit'])),
+      'who' => $entry['who'],
+      'last' => format_date($entry['last'], 'short'),
+      'lifts' => $entry['lifts'] ? format_date($entry['lifts'], 'short') : '',
     );
+    $map[$key] = array($entry['event'], $entry['identifier']);
   }
-
-  $prefix = '<p>There are two ways users are blocked:</p>' .
-    '<ul><li>Someone trying to log into the same account repeatedly.</li>' .
-    '<li>Multiple login attempts from the same IP address to one or more usernames.</li></ul>' .
-    '<p>Both types of blocks has different ';
-    $prefix .= l('settings', 'admin/config/people/login') . '</p>';
-  
 
   $form['table'] = array(
-    '#type'    => 'tableselect',
-    '#header'  => $header,
+    '#type' => 'tableselect',
+    '#header' => array(
+      'blocked' => t('Status'),
+      'type' => t('Type'),
+      'count' => t('Attempts'),
+      'who' => t('Account / IP address'),
+      'last' => t('Last attempt'),
+      'lifts' => t('Block lifts'),
+    ),
     '#options' => $options,
-    '#empty'   => t('There are no failed logins at this time.'),
-    '#prefix'  => t($prefix),
+    '#empty' => t('There are no failed logins or password reset requests at this time.'),
   );
 
-  $form['submit'] = array(
-    '#type'  => 'submit',
-    '#value' => t('Clear flood'),
+  // Kept server-side, so only entries listed on the form can be cleared.
+  $form['entries'] = array(
+    '#type' => 'value',
+    '#value' => $map,
   );
 
-  if (count($entries) == 0) {
-    $form['submit']['#disabled'] = TRUE;
-  }
+  $form['actions'] = array('#type' => 'actions');
+  $form['actions']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Clear selected'),
+    '#disabled' => empty($entries),
+  );
 
   return $form;
 }
 
 /**
- * The validation function.
+ * Form validation handler for flood_unblock_settings().
  */
 function flood_unblock_settings_validate($form, &$form_state) {
-  $count = 0;
-  foreach ($form_state['values']['table'] as $value) {
-    if ($value <> "0") {
-      $count++;
-    }
-  }
-  if ($count == 0) {
-    form_set_error('', t('Please make a selection.'));
+  if (!array_filter($form_state['values']['table'])) {
+    form_set_error('table', t('Please select at least one entry.'));
   }
 }
 
 /**
- * The submit function.
+ * Form submission handler for flood_unblock_settings().
+ *
+ * Clears every flood event recorded for each selected event and identifier.
  */
 function flood_unblock_settings_submit($form, &$form_state) {
-  foreach ($form_state['values']['table'] as $value) {
-    if ($value <> "0") {
-      $type = $form['table']['#options'][$value]['type'];
-      switch ($type) {
-        case 'ip':
-          $type = 'failed_login_attempt_ip';
-          break;
-
-        case 'user':
-          $type = 'failed_login_attempt_user';
-          break;
-
-      }
-
-      $identifier = $value;
-      flood_unblock_clear_event($type, $identifier);
-
+  $map = $form_state['values']['entries'];
+  $cleared = 0;
+  foreach (array_filter($form_state['values']['table']) as $key) {
+    if (isset($map[$key])) {
+      list($event, $identifier) = $map[$key];
+      flood_clear_event($event, $identifier);
+      watchdog('flood_unblock', 'Cleared flood event %event for %identifier.', array('%event' => $event, '%identifier' => $identifier));
+      $cleared++;
     }
   }
-}
-
-/**
- * Generate rows from the entries in the flood table.
- *
- * @return array
- *   Entries in the flood table.
- */
-function  _flood_unblock_get_entries() {
-  $entries = array();
-
-  $query = db_select('flood', 'f');
-  $query->addField('f', 'identifier');
-  $query->addField('f', 'identifier', 'ip');
-  $query->addExpression('count(*)', 'count');
-  $query->condition('f.event', 'failed_login_attempt_ip');
-  $query->groupBy('identifier');
-
-  $results = $query->execute();
-
-  foreach ($results as $result) {
-    if (function_exists('smart_ip_get_location')) {
-      $location = smart_ip_get_location($result->ip);
-      $location_string = sprintf(" (%s %s %s)", $location['city'], $location['region'], $location['country_code']);
-    }
-    else {
-      $location_string = '';
-    }
-    $entries[$result->identifier] = array(
-      'type'     => 'ip',
-      'ip'       => $result->ip,
-      'count'    => $result->count,
-      'location' => $location_string,
-    );
-  }
-
-  // TODO: Rebuild this query to a dynamic query.
-  $sql = "SELECT identifier, count(*) count FROM {flood} WHERE event='failed_login_attempt_user' group by identifier";
-
-  $results = db_query($sql);
-  foreach ($results as $result) {
-    $parts = explode('-', $result->identifier);
-    $result->uid = $parts[0];
-    $result->ip = $parts[1];
-    if (function_exists('smart_ip_get_location')) {
-      $location = smart_ip_get_location($result->ip);
-      $location_string = sprintf(" (%s %s %s)", $location['city'], $location['region'], $location['country_code']);
-    }
-    else {
-      $location_string = '';
-    }
-
-    $user = user_load($result->uid);
-    $entries[$result->identifier] = array(
-      'type'     => 'user',
-      'uid'      => $result->uid,
-      'ip'       => $result->ip,
-      'username' => l($user->name, 'user/' . $user->uid),
-      'count'    => $result->count,
-      'location' => $location_string,
-    );
-  }
-
-  return $entries;
+  backdrop_set_message(format_plural($cleared, 'Cleared 1 flood entry.', 'Cleared @count flood entries.'));
 }

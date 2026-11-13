@@ -1,10 +1,8 @@
 <?php
-
 /**
  * @file
- * The module file
- *
- * This module makes it possible to remove information in the flood table
+ * Lists and clears the flood control entries that lock people out of logging
+ * in or resetting their password.
  */
 
 /**
@@ -12,10 +10,10 @@
  */
 function flood_unblock_menu() {
   $items['admin/config/people/flood-unblock'] = array(
-    'title'            => 'Flood unblock',
-    'description'      => 'List all user blocked by the flood table.',
-    'page callback'    => 'drupal_get_form',
-    'page arguments'   => array('flood_unblock_settings'),
+    'title' => 'Flood unblock',
+    'description' => 'List and clear failed login and password reset attempts recorded by flood control.',
+    'page callback' => 'backdrop_get_form',
+    'page arguments' => array('flood_unblock_settings'),
     'access arguments' => array('access flood unblock'),
     'file' => 'flood_unblock.admin.inc',
   );
@@ -29,31 +27,238 @@ function flood_unblock_menu() {
 function flood_unblock_permission() {
   return array(
     'access flood unblock' => array(
-      'title' => t('Access the flood unblock module'),
+      'title' => t('Unblock flood-controlled logins'),
+      'description' => t('View and clear failed login and password reset attempts, including the IP addresses they came from.'),
+      'restrict access' => TRUE,
     ),
   );
 }
 
 /**
- * The function that clear the flood.
+ * Implements hook_block_info().
  */
-function flood_unblock_clear_event($type, $identifier) {
-  $txn = db_transaction();
-  try {
-    $query = db_delete('flood')->condition('event', $type);
-    if (isset($identifier)) {
-      $query->condition('identifier', $identifier);
+function flood_unblock_block_info() {
+  $blocks['blocked'] = array(
+    'info' => t('Flood unblock: blocked logins'),
+    'description' => t('Accounts and IP addresses currently blocked by flood control, with a link to unblock them.'),
+  );
+
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function flood_unblock_block_view($delta = '') {
+  if ($delta != 'blocked' || !user_access('access flood unblock')) {
+    return array();
+  }
+
+  $rows = array();
+  foreach (flood_unblock_get_entries(TRUE) as $entry) {
+    $rows[] = array(
+      $entry['who'],
+      check_plain($entry['label']),
+      t('in @time', array('@time' => format_interval($entry['lifts'] - REQUEST_TIME, 2))),
+    );
+  }
+
+  $content['table'] = array(
+    '#theme' => 'table',
+    '#header' => array(t('Who'), t('Block'), t('Lifts')),
+    '#rows' => $rows,
+    '#empty' => t('No one is blocked.'),
+  );
+  $content['link'] = array(
+    '#markup' => '<p>' . l(t('Manage flood entries'), 'admin/config/people/flood-unblock') . '</p>',
+  );
+
+  return array(
+    'subject' => t('Blocked logins'),
+    'content' => $content,
+  );
+}
+
+/**
+ * Describes the core user flood events this module can list and clear.
+ *
+ * @return array
+ *   Keyed by flood event name. Each value has:
+ *   - label: Human-readable name of the block.
+ *   - identifier: What the flood identifier holds: 'ip', 'uid', or 'uid-ip'
+ *     (a uid and IP joined by a hyphen, or just a uid when the site has
+ *     "flood_uid_only" set).
+ *   - limit: The user.flood config key holding the threshold.
+ *   - window: The user.flood config key holding the window in seconds.
+ */
+function flood_unblock_events() {
+  return array(
+    'failed_login_attempt_user' => array(
+      'label' => t('Failed logins to one account'),
+      'identifier' => 'uid-ip',
+      'limit' => 'flood_user_limit',
+      'window' => 'flood_user_window',
+    ),
+    'failed_login_attempt_ip' => array(
+      'label' => t('Failed logins from one IP'),
+      'identifier' => 'ip',
+      'limit' => 'flood_ip_limit',
+      'window' => 'flood_ip_window',
+    ),
+    'pass_reset_user' => array(
+      'label' => t('Password reset requests for one account'),
+      'identifier' => 'uid',
+      'limit' => 'flood_user_limit',
+      'window' => 'flood_user_window',
+    ),
+    'pass_reset_ip' => array(
+      'label' => t('Password reset requests from one IP'),
+      'identifier' => 'ip',
+      'limit' => 'flood_ip_limit',
+      'window' => 'flood_ip_window',
+    ),
+    'failed_pass_validation_user' => array(
+      'label' => t('Wrong current password on the account form'),
+      'identifier' => 'uid',
+      'limit' => 'flood_user_limit',
+      'window' => 'flood_user_window',
+    ),
+  );
+}
+
+/**
+ * Gets the flood entries that still count towards a block.
+ *
+ * Only events inside their window are counted, matching flood_is_allowed(),
+ * so entries that have lapsed but not yet been purged by cron are ignored.
+ *
+ * @param bool $blocked_only
+ *   TRUE to return only identifiers that have reached their limit.
+ *
+ * @return array
+ *   A list of entries, most recent first, keyed by a stable string built from
+ *   the event and identifier. Each has: event, identifier, label, count,
+ *   limit, blocked (bool), lifts (timestamp when the block ends, or NULL if not
+ *   blocked), last (timestamp of the latest attempt), uid (or NULL), ip (or
+ *   ''), and who (safe HTML: an account link and/or IP address).
+ */
+function flood_unblock_get_entries($blocked_only = FALSE) {
+  $config = config('user.flood');
+  $entries = array();
+  $uids = array();
+
+  foreach (flood_unblock_events() as $event => $info) {
+    $limit = (int) $config->get($info['limit']);
+    $window = (int) $config->get($info['window']);
+
+    $query = db_select('flood', 'f')
+      ->fields('f', array('identifier'))
+      ->condition('f.event', $event)
+      ->condition('f.timestamp', REQUEST_TIME - $window, '>')
+      ->groupBy('f.identifier');
+    $query->addExpression('COUNT(*)', 'attempts');
+    $query->addExpression('MAX(f.timestamp)', 'last');
+    if ($blocked_only) {
+      $query->having('COUNT(*) >= :limit', array(':limit' => $limit));
     }
-    $success = $query->execute();
-    if ($success) {
-      backdrop_set_message(t('Flood entries cleared.'), 'status', FALSE);
+
+    foreach ($query->execute() as $row) {
+      $entry = array(
+        'event' => $event,
+        'identifier' => $row->identifier,
+        'label' => $info['label'],
+        'count' => (int) $row->attempts,
+        'limit' => $limit,
+        'blocked' => $row->attempts >= $limit,
+        'lifts' => NULL,
+        'last' => (int) $row->last,
+        'uid' => NULL,
+        'ip' => '',
+      );
+
+      if ($info['identifier'] == 'ip') {
+        $entry['ip'] = $row->identifier;
+      }
+      else {
+        // An identifier of "uid-ip" splits into both parts; a bare uid (always
+        // for 'uid' events, and for 'uid-ip' events when flood_uid_only is
+        // set) has no IP part.
+        $parts = explode('-', $row->identifier, 2);
+        $entry['uid'] = (int) $parts[0];
+        $entry['ip'] = isset($parts[1]) ? $parts[1] : '';
+        $uids[$entry['uid']] = $entry['uid'];
+      }
+
+      if ($entry['blocked'] && $limit > 0) {
+        // The block lifts when the limit-th most recent attempt leaves the
+        // window, as the count then drops below the limit.
+        $nth = db_select('flood', 'f')
+          ->fields('f', array('timestamp'))
+          ->condition('f.event', $event)
+          ->condition('f.identifier', $row->identifier)
+          ->orderBy('f.timestamp', 'DESC')
+          ->range($limit - 1, 1)
+          ->execute()
+          ->fetchField();
+        $entry['lifts'] = (int) $nth + $window;
+      }
+
+      // A stable key, so a form rebuilt on submit maps the same key to the
+      // same entry even if other entries have come or gone meanwhile.
+      $entries['e' . md5($event . '|' . $row->identifier)] = $entry;
     }
   }
-  catch (Exception $e) {
-    // Something went wrong somewhere, so roll back now.
-    $txn->rollback();
-    // Log the exception to watchdog.
-    watchdog_exception('type', $e);
-    backdrop_set_message("Error: " . $e, 'error');
+
+  $accounts = $uids ? user_load_multiple($uids) : array();
+  foreach ($entries as &$entry) {
+    if (isset($entry['uid'])) {
+      if (isset($accounts[$entry['uid']])) {
+        $entry['who'] = theme('username', array('account' => $accounts[$entry['uid']]));
+      }
+      else {
+        $entry['who'] = t('Deleted user (@uid)', array('@uid' => $entry['uid']));
+      }
+      if ($entry['ip'] !== '') {
+        $entry['who'] .= ' ' . _flood_unblock_format_ip($entry['ip']);
+      }
+    }
+    else {
+      $entry['who'] = _flood_unblock_format_ip($entry['ip']);
+    }
   }
+  unset($entry);
+
+  uasort($entries, function ($a, $b) {
+    return $b['last'] - $a['last'];
+  });
+
+  return $entries;
+}
+
+/**
+ * Formats an IP address, adding its location when Smart IP is installed.
+ *
+ * @param string $ip
+ *   The IP address.
+ *
+ * @return string
+ *   Safe HTML.
+ */
+function _flood_unblock_format_ip($ip) {
+  $output = check_plain($ip);
+  if (function_exists('smart_ip_get_location')) {
+    $location = smart_ip_get_location($ip);
+    if (is_array($location)) {
+      $parts = array();
+      foreach (array('city', 'region', 'country_code') as $key) {
+        if (!empty($location[$key])) {
+          $parts[] = $location[$key];
+        }
+      }
+      if ($parts) {
+        $output .= ' (' . check_plain(implode(', ', $parts)) . ')';
+      }
+    }
+  }
+  return $output;
 }

@@ -1,5 +1,5 @@
 name = Flood unblock
-description = "Interface for unblocking IP's that are blocked by the flood table"
+description = Lists and clears failed login and password reset attempts, so locked-out users can be unblocked.
 backdrop = 1.x
 type = module
 configure = admin/config/people/flood-unblock

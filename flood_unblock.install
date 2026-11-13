@@ -1,0 +1,68 @@
+<?php
+/**
+ * @file
+ * Install and uninstall functions for the flood_unblock module.
+ */
+
+/**
+ * Implements hook_install().
+ *
+ * Places the "blocked logins" block on the admin dashboard, so admins see
+ * lock-outs without having to go looking for them.
+ */
+function flood_unblock_install() {
+  if (!module_exists('dashboard')) {
+    return;
+  }
+  $layouts = layout_load_multiple_by_path('admin/dashboard');
+  $layout = reset($layouts);
+  if (!$layout || empty($layout->positions)) {
+    return;
+  }
+
+  // Never add a second copy, e.g. when the module is reinstalled after the
+  // block was kept in place.
+  foreach ($layout->content as $block) {
+    if ($block->module == 'flood_unblock' && $block->delta == 'blocked') {
+      return;
+    }
+  }
+
+  // Core's dashboard uses the sutro template; put the block at the top of its
+  // right-hand column. Other templates fall back to content, then the first
+  // region.
+  $positions = $layout->positions;
+  if (isset($positions['half2'])) {
+    $region = 'half2';
+  }
+  elseif (isset($positions['content'])) {
+    $region = 'content';
+  }
+  else {
+    $region = key($positions);
+  }
+
+  $layout->addBlock('flood_unblock', 'blocked', $region, 0);
+  $layout->save();
+}
+
+/**
+ * Implements hook_uninstall().
+ *
+ * Removes the module's block from every layout, so no broken block is left
+ * behind.
+ */
+function flood_unblock_uninstall() {
+  foreach (layout_load_all() as $layout) {
+    $changed = FALSE;
+    foreach ($layout->content as $uuid => $block) {
+      if ($block->module == 'flood_unblock') {
+        $layout->removeBlock($uuid);
+        $changed = TRUE;
+      }
+    }
+    if ($changed) {
+      $layout->save();
+    }
+  }
+}
