@@ -8,7 +8,7 @@ Installation
 
 Install this module using the official Backdrop CMS instructions at https://backdropcms.org/guide/modules.
 
-Manage the flood table entries under "Administer" -> "Configuration" -> "User Accounts" -> "Flood Control" -> "Flood Unblock".
+Manage the flood table entries under "Administer" -> "Configuration" -> "User Accounts" -> "Flood Unblock".
 
 License
 -------
