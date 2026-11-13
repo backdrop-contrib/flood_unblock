@@ -28,7 +28,12 @@ function flood_unblock_settings($form, &$form_state) {
       'last' => format_date($entry['last'], 'short'),
       'lifts' => $entry['lifts'] ? format_date($entry['lifts'], 'short') : '',
     );
-    $map[$key] = array($entry['event'], $entry['identifier']);
+    $map[$key] = array(
+      'event' => $entry['event'],
+      'identifier' => $entry['identifier'],
+      'label' => $entry['label'],
+      'who' => $entry['who_plain'],
+    );
   }
 
   $form['table'] = array(
@@ -58,7 +63,64 @@ function flood_unblock_settings($form, &$form_state) {
     '#disabled' => empty($entries),
   );
 
+  $form['recent'] = flood_unblock_recent_clears();
+
   return $form;
+}
+
+/**
+ * Builds a table of the most recent unblocks, read from the database log.
+ *
+ * Clearing deletes the flood rows, so the log is the only record of who
+ * unblocked whom and when.
+ *
+ * @param int $limit
+ *   How many entries to show.
+ *
+ * @return array
+ *   A render array, or an empty array when Database logging is not enabled.
+ */
+function flood_unblock_recent_clears($limit = 10) {
+  if (!module_exists('dblog')) {
+    return array();
+  }
+  module_load_include('inc', 'dblog', 'dblog.admin');
+
+  $events = db_select('watchdog', 'w')
+    ->fields('w', array('wid', 'uid', 'message', 'variables', 'timestamp'))
+    ->condition('w.type', 'flood_unblock')
+    ->orderBy('w.wid', 'DESC')
+    ->range(0, $limit)
+    ->execute()
+    ->fetchAll();
+
+  $uids = array();
+  foreach ($events as $event) {
+    $uids[$event->uid] = $event->uid;
+  }
+  $accounts = $uids ? user_load_multiple($uids) : array();
+
+  $rows = array();
+  foreach ($events as $event) {
+    $rows[] = array(
+      format_date($event->timestamp, 'short'),
+      isset($accounts[$event->uid]) ? theme('username', array('account' => $accounts[$event->uid])) : t('Unknown'),
+      // Core's formatter: translates with the stored variables, then
+      // filter_xss_admin().
+      dblog_format_message($event),
+    );
+  }
+
+  return array(
+    '#type' => 'fieldset',
+    '#title' => t('Recently unblocked'),
+    'table' => array(
+      '#theme' => 'table',
+      '#header' => array(t('When'), t('By'), t('What')),
+      '#rows' => $rows,
+      '#empty' => t('Nothing has been unblocked yet.'),
+    ),
+  );
 }
 
 /**
@@ -80,9 +142,9 @@ function flood_unblock_settings_submit($form, &$form_state) {
   $cleared = 0;
   foreach (array_filter($form_state['values']['table']) as $key) {
     if (isset($map[$key])) {
-      list($event, $identifier) = $map[$key];
-      flood_clear_event($event, $identifier);
-      watchdog('flood_unblock', 'Cleared flood event %event for %identifier.', array('%event' => $event, '%identifier' => $identifier));
+      $item = $map[$key];
+      flood_clear_event($item['event'], $item['identifier']);
+      watchdog('flood_unblock', 'Unblocked %who: %type.', array('%who' => $item['who'], '%type' => $item['label']));
       $cleared++;
     }
   }

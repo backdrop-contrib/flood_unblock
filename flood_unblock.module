@@ -140,7 +140,8 @@ function flood_unblock_events() {
  *   the event and identifier. Each has: event, identifier, label, count,
  *   limit, blocked (bool), lifts (timestamp when the block ends, or NULL if not
  *   blocked), last (timestamp of the latest attempt), uid (or NULL), ip (or
- *   ''), and who (safe HTML: an account link and/or IP address).
+ *   ''), who (safe HTML: an account link and/or IP address) and who_plain
+ *   (the same as unescaped plain text, for log messages).
  */
 function flood_unblock_get_entries($blocked_only = FALSE) {
   $config = config('user.flood');
@@ -214,16 +215,20 @@ function flood_unblock_get_entries($blocked_only = FALSE) {
     if (isset($entry['uid'])) {
       if (isset($accounts[$entry['uid']])) {
         $entry['who'] = theme('username', array('account' => $accounts[$entry['uid']]));
+        $entry['who_plain'] = $accounts[$entry['uid']]->name;
       }
       else {
         $entry['who'] = t('Deleted user (@uid)', array('@uid' => $entry['uid']));
+        $entry['who_plain'] = t('Deleted user (@uid)', array('@uid' => $entry['uid']));
       }
       if ($entry['ip'] !== '') {
         $entry['who'] .= ' ' . _flood_unblock_format_ip($entry['ip']);
+        $entry['who_plain'] .= ' (' . $entry['ip'] . ')';
       }
     }
     else {
       $entry['who'] = _flood_unblock_format_ip($entry['ip']);
+      $entry['who_plain'] = $entry['ip'];
     }
   }
   unset($entry);
